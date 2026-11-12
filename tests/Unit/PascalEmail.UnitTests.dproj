@@ -68,7 +68,7 @@
         <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
         <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-        <DCC_UnitSearchPath>$(DUnitX);..\..\src;..\..\adapters\smtp;..\..\external\pascal-common-faa\src;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>$(DUnitX);..\..\src;..\..\adapters\smtp;..\..\adapters\ses;..\..\external\pascal-common-faa\src;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>PascalEmail_UnitTests</SanitizedProjectName>
         <UsingDelphiRTL>true</UsingDelphiRTL>
     </PropertyGroup>
@@ -123,6 +123,8 @@
         <DCCReference Include="..\..\src\PascalEmail.FileSender.pas"/>
         <DCCReference Include="..\..\src\PascalEmail.Decorators.pas"/>
         <DCCReference Include="..\..\adapters\smtp\PascalEmail.Smtp.pas"/>
+        <DCCReference Include="..\..\adapters\ses\PascalEmail.AwsSigV4.pas"/>
+        <DCCReference Include="..\..\adapters\ses\PascalEmail.Ses.pas"/>
         <DCCReference Include="PascalEmail.DUnitXCompat.pas"/>
         <DCCReference Include="PascalEmail.TestSupport.pas"/>
         <DCCReference Include="PascalEmail.AddressTests.pas"/>
@@ -130,6 +132,7 @@
         <DCCReference Include="PascalEmail.MockTests.pas"/>
         <DCCReference Include="PascalEmail.SmtpTests.pas"/>
         <DCCReference Include="PascalEmail.DecoratorTests.pas"/>
+        <DCCReference Include="PascalEmail.SesTests.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

@@ -17,11 +17,12 @@ This file records only what is specific to this repository.
 ## Where things stand (2026-11-12)
 
 - **0.1.0, not released** (first commit 2026-11-12). Core, mock, file
-  sender, the SMTP adapter and the decorators (redirect, allowlist; design section 11). Unit
-  112/112 and integration 18/18, 0 leaks, on FPC 3.2.2 Windows
+  sender, the SMTP adapter, the decorators (redirect, allowlist; design section 11) and the SES
+  adapter (design section 12; vectors only, no AWS account: findings 9-12). Unit 137/137 and
+  integration 18/18, 0 leaks, on FPC 3.2.2 Windows
   (SChannel and OpenSSL) and Linux (Docker, OpenSSL 3), and on Delphi 12 Win32 and Win64 (the
   user built both suites in the IDE; the `.exe` were run from here, 2026-11-12).
-- **Decisions**: `docs/design.md` (E1-E25, accepted 2026-11-12; Q1-Q7 closed with the
+- **Decisions**: `docs/design.md` (E1-E29, accepted 2026-11-12; Q1-Q7 closed with the
   proposals). **What servers and parsers did**: `docs/findings.md`, numbered; the design cites
   "finding N". Read both before changing the contract.
 - **Depends on pascal-common-faa 1.32.0** (`PcBase64Encode`/`PcBase64Decode`, added for this
@@ -31,10 +32,9 @@ This file records only what is specific to this repository.
   `DefaultFilename`; the test `.lpi` files point at the submodule's `.lpk` with `Prefer="True"`;
   the Delphi projects add `external/pascal-common-faa/src` to the search path. Checkout without
   `--recursive` (pascal-common-faa's own submodules are for its tests).
-- **Next** (design Q1): one HTTP provider to validate the contract (Amazon SES v2 leads: SigV4
-  is pascal-common-faa's SHA-256/HMAC, and it takes the raw MIME), as its own package on
-  `PascalCommon.Http`; then the outbox bridge (design E11, pascal-db-faa's `TOutboxLocalSink`,
-  its own package); then an entry in the skill's `faa-libraries.md` once a version is published.
+- **Next**: the outbox bridge (design E11, pascal-db-faa's `TOutboxLocalSink`, its own package);
+  confirm finding 12 on a real SES account when one exists; an entry in the skill's
+  `faa-libraries.md` once a version is published.
 
 ---
 

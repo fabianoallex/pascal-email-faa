@@ -57,3 +57,42 @@ The probe's sources are in `.ci/probe-smtp` (git-ignored): `probe.lpr` (one send
    sections, multipart/mixed around multipart/related around multipart/alternative, an inline
    image by `Content-ID`, attachment bytes intact, every line ≤ 76 characters, CRLF only. Like
    Mailpit, it returns a single part's body with its final line break and the breaks as CRLF.
+
+## AWS Signature Version 4 and SES (2026-11-12, no AWS account)
+
+There was no AWS account to send through: these findings are vectors and documentation, not
+measurements against SES. The vectors were computed outside this code and the unit tests hold
+the library to them (`PascalEmail.SesTests`); the probe is `.ci/probe-ses` (`vectors.py`,
+`sescheck.py`, `sesprobe.lpr`; botocore 1.44.1 in a throwaway venv).
+
+9. **AWS's published vectors**: the derived signing key of AWS's documentation example (secret
+   `wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY`, 20120215, us-east-1, iam) is
+   `f4780e2d...db404d`, and the `get-vanilla` case of AWS's SigV4 test suite signs as
+   `5fa00fa3...763fbf31`. botocore 1.44.1 computes the same two values, so the reference itself
+   is checked.
+
+10. **botocore vectors for what the suite doesn't cover**: query parameters out of order
+    (`b97d918c...`, the suite's query-order case), a header value with repeated blanks
+    (`1d3c8dac...`, canonicalized to single spaces), and an SES `SendEmail` POST to
+    `email.sa-east-1.amazonaws.com/v2/email/outbound-emails` with `Content-Type:
+    application/json`, without (`75819559...`) and with a session token (`edfb2bbb...`, the
+    token signed as `x-amz-security-token`). botocore signs `content-type`, `host` and the
+    `x-amz-*` headers; the library signs every header it sends plus `host`, the same set here.
+
+11. **End to end: botocore signs the request `TSesSender` builds identically.** The probe
+    captured a real request (raw MIME with an attachment, a session token, a configuration set,
+    a tag) through the fake transport and had botocore sign the same URL, `Content-Type` and
+    body at the same `X-Amz-Date`: same `Authorization`. The body is valid JSON, its
+    `Content.Raw.Data` decodes to a message Python's `email` package parses, and the Bcc address
+    is only in `Destination`.
+
+12. **SES v2 behavior taken from the API reference, not measured**: `SendEmail` answers 200 with
+    `{"MessageId": ...}`; failures carry the error name in `x-amzn-ErrorType` (sometimes
+    `Name:http://...`, sometimes in the body's `__type` as `...#Name`) and the text in the body's
+    `message`. Names mapped (design E28): `MessageRejected` (an unverified address in the sandbox
+    included), `BadRequestException`, `MailFromDomainNotVerifiedException`,
+    `AccountSuspendedException`, `SendingPausedException`, `NotFoundException`,
+    `LimitExceededException`, `TooManyRequestsException`. For raw content, the recipients come
+    from the headers unless `Destination` is given, and the sender from the From header when
+    `FromEmailAddress` is left out. **The first real send should confirm these**; the mapping
+    is one function (`TSesSender.RaiseForStatus`).

@@ -8,7 +8,7 @@ may change the API; each such change is listed here.
 
 ## [0.1.0] - unreleased
 
-First version (`docs/design.md`, E1-E25; `docs/findings.md`, findings 1-8).
+First version (`docs/design.md`, E1-E29; `docs/findings.md`, findings 1-12).
 
 ### Added
 
@@ -29,6 +29,10 @@ First version (`docs/design.md`, E1-E25; `docs/findings.md`, findings 1-8).
 - `PascalEmail.Decorators` (design section 11): `TRedirectEmailSender` (every message to fixed
   addresses, originals in `X-Original-*`, subject prefix) and `TAllowlistEmailSender` (only
   listed addresses and `@domains`; the rest reported in `Rejected`); `EmailCopyMessage`.
-- Tests: the unit suite (112; a scripted SMTP server, exact MIME bytes) and the integration suite
+- The Amazon SES adapter (`pascal_email_faa_ses`, design section 12): `TSesSender` (API v2
+  `SendEmail` with the raw MIME, explicit envelope, `EmailTags`, configuration sets, static
+  credentials or an `ISesCredentialsProvider`) and `PascalEmail.AwsSigV4` (Signature Version 4,
+  checked against AWS's vectors and botocore; findings 9-12).
+- Tests: the unit suite (137; a scripted SMTP server, exact MIME bytes) and the integration suite
   (18; Mailpit v1.33.1 in Docker, three servers), DUnitX masters with generated FPCUnit mirrors;
   `tools/ci-test.sh` and the GitHub Actions workflow (FPC 3.2.2 on Linux).

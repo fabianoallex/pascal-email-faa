@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <Package Version="5">
+    <PathDelim Value="\"/>
+    <Name Value="pascal_email_faa_ses"/>
+    <Author Value="Fabiano Arndt"/>
+    <CompilerOptions>
+      <Version Value="11"/>
+      <PathDelim Value="\"/>
+      <SearchPaths>
+        <IncludeFiles Value="..\src"/>
+        <OtherUnitFiles Value="..\adapters\ses"/>
+        <UnitOutputDirectory Value="lib-ses\$(TargetCPU)-$(TargetOS)"/>
+      </SearchPaths>
+    </CompilerOptions>
+    <Description Value="pascal-email-faa's Amazon SES sender (API v2, raw MIME) over pascal-common-faa's HTTP client, with AWS Signature Version 4 checked against AWS's vectors; errors classified for retries."/>
+    <License Value="MIT"/>
+    <Version Minor="1"/>
+    <Files>
+      <Item>
+        <Filename Value="..\adapters\ses\PascalEmail.AwsSigV4.pas"/>
+        <UnitName Value="PascalEmail.AwsSigV4"/>
+      </Item>
+      <Item>
+        <Filename Value="..\adapters\ses\PascalEmail.Ses.pas"/>
+        <UnitName Value="PascalEmail.Ses"/>
+      </Item>
+    </Files>
+    <RequiredPkgs>
+      <Item>
+        <PackageName Value="pascal_email_faa"/>
+        <MinVersion Minor="1" Valid="True"/>
+      </Item>
+      <Item>
+        <PackageName Value="pascal_common_faa"/>
+        <MinVersion Major="1" Minor="32" Valid="True"/>
+      </Item>
+      <Item>
+        <PackageName Value="FCL"/>
+      </Item>
+    </RequiredPkgs>
+    <UsageOptions>
+      <UnitPath Value="$(PkgOutDir)"/>
+    </UsageOptions>
+    <PublishOptions>
+      <Version Value="2"/>
+      <UseFileFilters Value="True"/>
+    </PublishOptions>
+  </Package>
+</CONFIG>

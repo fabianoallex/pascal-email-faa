@@ -41,6 +41,10 @@
         <DefaultFilename Value="..\..\..\packages\pascal_email_faa_smtp.lpk"/>
       </Item>
       <Item>
+        <PackageName Value="pascal_email_faa_ses"/>
+        <DefaultFilename Value="..\..\..\packages\pascal_email_faa_ses.lpk"/>
+      </Item>
+      <Item>
         <PackageName Value="FPCUnitTestRunner"/>
       </Item>
       <Item>

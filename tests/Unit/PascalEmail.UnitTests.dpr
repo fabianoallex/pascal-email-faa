@@ -27,13 +27,16 @@ uses
   PascalEmail.FileSender in '..\..\src\PascalEmail.FileSender.pas',
   PascalEmail.Decorators in '..\..\src\PascalEmail.Decorators.pas',
   PascalEmail.Smtp in '..\..\adapters\smtp\PascalEmail.Smtp.pas',
+  PascalEmail.AwsSigV4 in '..\..\adapters\ses\PascalEmail.AwsSigV4.pas',
+  PascalEmail.Ses in '..\..\adapters\ses\PascalEmail.Ses.pas',
   PascalEmail.DUnitXCompat in 'PascalEmail.DUnitXCompat.pas',
   PascalEmail.TestSupport in 'PascalEmail.TestSupport.pas',
   PascalEmail.AddressTests in 'PascalEmail.AddressTests.pas',
   PascalEmail.MimeTests in 'PascalEmail.MimeTests.pas',
   PascalEmail.MockTests in 'PascalEmail.MockTests.pas',
   PascalEmail.SmtpTests in 'PascalEmail.SmtpTests.pas',
-  PascalEmail.DecoratorTests in 'PascalEmail.DecoratorTests.pas';
+  PascalEmail.DecoratorTests in 'PascalEmail.DecoratorTests.pas',
+  PascalEmail.SesTests in 'PascalEmail.SesTests.pas';
 
 var
   runner: ITestRunner;

@@ -10,12 +10,13 @@ whether a retry can help.
 - **One MIME writer** (RFC 5322, 2045-2047, 2231), byte-for-byte the same on both compilers:
   7-bit, CRLF, lines within 76 characters, accents and emoji encoded, attachment names readable
   by old and new clients.
-- **Senders**: SMTP (STARTTLS or implicit TLS, verified, AUTH PLAIN/LOGIN/XOAUTH2), an
+- **Senders**: SMTP (STARTTLS or implicit TLS, verified, AUTH PLAIN/LOGIN/XOAUTH2), Amazon SES
+  (API v2), an
   in-memory mock for your tests, and an `.eml` file writer (development, pickup folders).
 - **Errors that say what to do**: invalid message, authentication, permanent refusal,
   transient failure, or "sent, but no answer came" (a retry may duplicate).
 
-Status: **0.1.0, unreleased**. Unit suite 112 tests, integration suite 18 (SMTP against Mailpit:
+Status: **0.1.0, unreleased**. Unit suite 137 tests, integration suite 18 (SMTP against Mailpit:
 STARTTLS, implicit TLS, plain; a private CA), 0 leaks, on FPC 3.2.2 Windows (SChannel and
 OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [`docs/design.md`](docs/design.md); what servers did: [`docs/findings.md`](docs/findings.md).
 
@@ -32,6 +33,8 @@ OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [
 | `PascalEmail.FileSender` | `pascal_email_faa` | `TFileEmailSender`: one `.eml` per message |
 | `PascalEmail.Decorators` | `pascal_email_faa` | `TRedirectEmailSender`, `TAllowlistEmailSender`: development and staging |
 | `PascalEmail.Smtp` | `pascal_email_faa_smtp` | `TSmtpSender`, `TSmtpOptions`, `IEmailTokenProvider`, `ISmtpConnector` |
+| `PascalEmail.Ses` | `pascal_email_faa_ses` | `TSesSender`, `TSesOptions`, `ISesCredentialsProvider`: Amazon SES API v2 (raw MIME) |
+| `PascalEmail.AwsSigV4` | `pascal_email_faa_ses` | AWS Signature Version 4 (`AwsSigV4Sign`), checked against AWS's vectors |
 | `PascalEmail.Version` | `pascal_email_faa` | `PASCALEMAIL_VERSION` (`MMmmpp`) |
 
 ## Requirements
@@ -100,6 +103,22 @@ end;
   `UserName` is the mailbox.
 - **Several messages through one connection**: `LSender.SendMany([M1, M2, M3])` returns one
   outcome per message; a refused message doesn't stop the others.
+
+### Amazon SES
+
+```pascal
+uses PascalEmail.Ses;
+
+LSender := TSesSender.Create(TSesOptions.Create('sa-east-1', LAccessKeyId, LSecretAccessKey));
+LResult := LSender.Send(LMessage);   // LResult.ProviderId: SES's MessageId
+```
+
+The same message, the same MIME: SES gets it raw (API v2 `SendEmail`), signed with AWS Signature
+Version 4. `ConfigurationSetName` selects a configuration set; message metadata and tags become
+SES `EmailTags` (letters, digits, `_` and `-` only). For an IAM role, set
+`CredentialsProvider` to an object of yours that returns the current temporary credentials.
+The signature is checked against AWS's published vectors and botocore; the error mapping
+follows the SES API reference and hasn't met a real account yet (`docs/findings.md`, 9-12).
 
 ## Errors and retries
 

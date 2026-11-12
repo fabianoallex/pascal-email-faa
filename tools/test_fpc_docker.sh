@@ -31,7 +31,7 @@ MSYS_NO_PATHCONV=1 docker run --rm -v "$MOUNT:/src:ro" -v "$COMMON:/common:ro" "
   mkdir -p /t/u && cp -r /src/src /src/adapters /src/tests /t/
   C=/common/src
   cd /t/tests/Unit/fpc
-  fpc -v0 -Mdelphi -Fu/t/src -Fi/t/src -Fu/t/adapters/smtp -Fu$C -Fi$C -Fu/t/tests/Unit -FU/t/u -gh -gl \
+  fpc -v0 -Mdelphi -Fu/t/src -Fi/t/src -Fu/t/adapters/smtp -Fu/t/adapters/ses -Fu$C -Fi$C -Fu/t/tests/Unit -FU/t/u -gh -gl \
     -o/t/runner PascalEmailUnitTestsFpc.lpr > /t/build.log 2>&1 \
     || { grep -iE "error|fatal" /t/build.log | head -30; exit 1; }
   cd /t

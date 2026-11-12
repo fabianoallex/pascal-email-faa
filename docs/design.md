@@ -331,3 +331,33 @@ decorators cover (`PascalEmail.Decorators`, core, no new dependency):
 - **E25. No configuration-driven factory in 0.1.** Choosing the sender by environment (`smtp`,
   `file`, `redirect:...`) is a few lines in the application's composition root; a factory can
   come when a second application wants the same one.
+
+## 12. The Amazon SES adapter (2026-11-12)
+
+Accepted with the user on 2026-11-12, to validate the contract against an HTTP provider. No AWS
+account: validated against AWS's and botocore's vectors (findings 9-12).
+
+- **E26. SES API v2, `SendEmail` with raw content**, in its own package
+  (`pascal_email_faa_ses`, `adapters/ses`) on `PascalCommon.Http`: the MIME of
+  `PascalEmail.Mime` in Base64, so SES sends the bytes SMTP would. `Destination` is always
+  explicit (Bcc isn't in the headers); `FromEmailAddress` is left out (the From header);
+  metadata becomes `EmailTags`, and a tag becomes `EmailTags` with the value `true`. SES allows
+  only `[A-Za-z0-9_-]{1,256}` there: anything else is `EEmailArgumentError` before the request.
+  No JSON library: the request is a fixed shape of ASCII values and the answers are flat objects
+  (`MessageId`, `message`, `__type`).
+- **E27. Signature Version 4 in its own unit** (`PascalEmail.AwsSigV4`, no SES in it): every
+  header sent plus `host` (computed as the transport writes it; the transport refuses a request
+  that sets `Host`), the path and query as given (already encoded). If a second library talks
+  to AWS, it is a pascal-common-faa candidate. Credentials are static, or an
+  `ISesCredentialsProvider` asked at every send (IAM roles; caching is the provider's).
+- **E28. Errors**: by the error name first, then the status. `TooManyRequests`, `LimitExceeded`,
+  `Throttling`, 429 and 5xx are `EEmailTransient`; 401, 403, `NotFound` (configuration set),
+  `MailFromDomainNotVerified`, `AccountSuspended`, `SendingPaused` are `EEmailAuthError` (the
+  account's configuration); `MessageRejected`, `BadRequest` and any other 4xx are
+  `EEmailRejected`. **No HTTP answer is `EEmailOutcomeUnknown`**: pascal-common-faa's transport
+  raises `EPcHttpTransport` both when the connection failed and when the POST went out without
+  an answer, and never sends a POST twice; the library can't tell which, so it says the safe
+  thing. A subclass for "nothing was sent" (connect failures) in pascal-common-faa would let a
+  refused connection be `EEmailTransient`; not needed for retries (both classes are
+  retryable), so not proposed yet.
+- **E29. The clock is TClock** (`EmailUtcNow`), so a test fixes the signing time.

@@ -4,6 +4,7 @@
     <Targets>
       <Target FileName="packages\pascal_email_faa.lpk"/>
       <Target FileName="packages\pascal_email_faa_smtp.lpk"/>
+      <Target FileName="packages\pascal_email_faa_ses.lpk"/>
       <Target FileName="tests\Unit\fpc\PascalEmailUnitTestsFpc.lpi">
         <BuildModes>
           <Mode Name="Default"/>

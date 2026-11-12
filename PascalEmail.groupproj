@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{389261BE-F448-43CF-831C-988536BF7F36}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="tests\Unit\PascalEmail.UnitTests.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="tests\Integration\PascalEmail.IntegrationSuite.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="PascalEmail_UnitTests">
+        <MSBuild Projects="tests\Unit\PascalEmail.UnitTests.dproj"/>
+    </Target>
+    <Target Name="PascalEmail_UnitTests:Clean">
+        <MSBuild Projects="tests\Unit\PascalEmail.UnitTests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="PascalEmail_UnitTests:Make">
+        <MSBuild Projects="tests\Unit\PascalEmail.UnitTests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="PascalEmail_IntegrationSuite">
+        <MSBuild Projects="tests\Integration\PascalEmail.IntegrationSuite.dproj"/>
+    </Target>
+    <Target Name="PascalEmail_IntegrationSuite:Clean">
+        <MSBuild Projects="tests\Integration\PascalEmail.IntegrationSuite.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="PascalEmail_IntegrationSuite:Make">
+        <MSBuild Projects="tests\Integration\PascalEmail.IntegrationSuite.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="PascalEmail_UnitTests;PascalEmail_IntegrationSuite"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="PascalEmail_UnitTests:Clean;PascalEmail_IntegrationSuite:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="PascalEmail_UnitTests:Make;PascalEmail_IntegrationSuite:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

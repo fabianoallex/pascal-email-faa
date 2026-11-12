@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <Package Version="5">
+    <PathDelim Value="\"/>
+    <Name Value="pascal_email_faa"/>
+    <Author Value="Fabiano Arndt"/>
+    <CompilerOptions>
+      <Version Value="11"/>
+      <PathDelim Value="\"/>
+      <SearchPaths>
+        <IncludeFiles Value="..\src"/>
+        <OtherUnitFiles Value="..\src"/>
+        <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
+      </SearchPaths>
+    </CompilerOptions>
+    <Description Value="An e-mail sending contract for Delphi and Lazarus/FPC (dual-compiler): a message with a fluent builder, one RFC 5322/MIME writer, senders that classify every failure as permanent, transient or of unknown outcome, an in-memory mock and an .eml file sender. Engine adapters are separate packages (pascal_email_faa_smtp)."/>
+    <License Value="MIT"/>
+    <Version Minor="1"/>
+    <Files>
+      <Item>
+        <Filename Value="..\src\pascalemail.inc"/>
+        <Type Value="Include"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Version.pas"/>
+        <UnitName Value="PascalEmail.Version"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Errors.pas"/>
+        <UnitName Value="PascalEmail.Errors"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Address.pas"/>
+        <UnitName Value="PascalEmail.Address"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Message.pas"/>
+        <UnitName Value="PascalEmail.Message"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Mime.pas"/>
+        <UnitName Value="PascalEmail.Mime"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Interfaces.pas"/>
+        <UnitName Value="PascalEmail.Interfaces"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Mock.pas"/>
+        <UnitName Value="PascalEmail.Mock"/>
+      </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.FileSender.pas"/>
+        <UnitName Value="PascalEmail.FileSender"/>
+      </Item>
+    </Files>
+    <RequiredPkgs>
+      <Item>
+        <PackageName Value="pascal_common_faa"/>
+        <MinVersion Major="1" Minor="32" Valid="True"/>
+      </Item>
+      <Item>
+        <PackageName Value="FCL"/>
+      </Item>
+    </RequiredPkgs>
+    <UsageOptions>
+      <UnitPath Value="$(PkgOutDir)"/>
+    </UsageOptions>
+    <PublishOptions>
+      <Version Value="2"/>
+      <UseFileFilters Value="True"/>
+    </PublishOptions>
+  </Package>
+</CONFIG>

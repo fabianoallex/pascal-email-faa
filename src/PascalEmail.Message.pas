@@ -123,6 +123,13 @@ function EmailGuessContentType(const AFileName: string): string;
 /// True when AName is one of the headers the library writes itself.
 function EmailIsReservedHeader(const AName: string): Boolean;
 
+/// A new message with everything AMessage has (sender, Reply-To, subject,
+/// bodies, attachments, headers, Message-ID, date, tags, metadata) and,
+/// when AWithRecipients, its To, Cc and Bcc too (attachments copied). For
+/// decorators that send a changed message without touching the caller's
+/// (PascalEmail.Decorators).
+function EmailCopyMessage(const AMessage: IEmailMessage; AWithRecipients: Boolean): IEmailMessage;
+
 implementation
 
 uses
@@ -297,6 +304,57 @@ begin
       raise EEmailArgumentError.CreateFmt('invalid header name: "%s"', [AName]);
   if EmailIsReservedHeader(AName) then
     raise EEmailArgumentError.CreateFmt('header %s is written by the library', [AName]);
+end;
+
+function EmailCopyMessage(const AMessage: IEmailMessage; AWithRecipients: Boolean): IEmailMessage;
+var
+  I: Integer;
+  LList: TEmailAddresses;
+  LAttachments: TEmailAttachments;
+  LHeaders: TEmailHeaders;
+  LTags: TArray<string>;
+begin
+  Result := TEmailMessage.New;
+  if AMessage.HasFrom then
+    Result.SetFrom(AMessage.From.Address, AMessage.From.Name);
+  if AMessage.HasSender then
+    Result.SetSender(AMessage.Sender.Address, AMessage.Sender.Name);
+  LList := AMessage.ReplyToList;
+  for I := 0 to High(LList) do
+    Result.AddReplyTo(LList[I].Address, LList[I].Name);
+  if AWithRecipients then
+  begin
+    LList := AMessage.ToList;
+    for I := 0 to High(LList) do
+      Result.AddTo(LList[I].Address, LList[I].Name);
+    LList := AMessage.CcList;
+    for I := 0 to High(LList) do
+      Result.AddCc(LList[I].Address, LList[I].Name);
+    LList := AMessage.BccList;
+    for I := 0 to High(LList) do
+      Result.AddBcc(LList[I].Address, LList[I].Name);
+  end;
+  Result.SetSubject(AMessage.Subject).SetText(AMessage.TextBody).SetHtml(AMessage.HtmlBody);
+  LAttachments := AMessage.Attachments;
+  for I := 0 to High(LAttachments) do
+    if LAttachments[I].IsInline then
+      Result.Embed(LAttachments[I].ContentId, LAttachments[I].FileName,
+        LAttachments[I].Content, LAttachments[I].ContentType)
+    else
+      Result.Attach(LAttachments[I].FileName, LAttachments[I].Content,
+        LAttachments[I].ContentType);
+  LHeaders := AMessage.Headers;
+  for I := 0 to High(LHeaders) do
+    Result.AddHeader(LHeaders[I].Name, LHeaders[I].Value);
+  if AMessage.MessageId <> '' then
+    Result.SetMessageId(AMessage.MessageId);
+  Result.SetDate(AMessage.Date);
+  LTags := AMessage.Tags;
+  for I := 0 to High(LTags) do
+    Result.AddTag(LTags[I]);
+  LHeaders := AMessage.Metadata;
+  for I := 0 to High(LHeaders) do
+    Result.SetMetadata(LHeaders[I].Name, LHeaders[I].Value);
 end;
 
 procedure AppendAddress(var AList: TEmailAddresses; const AAddress: TEmailAddress);

@@ -15,7 +15,7 @@ whether a retry can help.
 - **Errors that say what to do**: invalid message, authentication, permanent refusal,
   transient failure, or "sent, but no answer came" (a retry may duplicate).
 
-Status: **0.1.0, unreleased**. Unit suite 94 tests, integration suite 18 (SMTP against Mailpit:
+Status: **0.1.0, unreleased**. Unit suite 112 tests, integration suite 18 (SMTP against Mailpit:
 STARTTLS, implicit TLS, plain; a private CA), 0 leaks, on FPC 3.2.2 Windows (SChannel and
 OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [`docs/design.md`](docs/design.md); what servers did: [`docs/findings.md`](docs/findings.md).
 
@@ -30,6 +30,7 @@ OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [
 | `PascalEmail.Errors` | `pascal_email_faa` | `EEmailError` and its classes, `EmailIsRetryable` |
 | `PascalEmail.Mock` | `pascal_email_faa` | `TMockEmailSender`: keeps what was sent, fails on demand |
 | `PascalEmail.FileSender` | `pascal_email_faa` | `TFileEmailSender`: one `.eml` per message |
+| `PascalEmail.Decorators` | `pascal_email_faa` | `TRedirectEmailSender`, `TAllowlistEmailSender`: development and staging |
 | `PascalEmail.Smtp` | `pascal_email_faa_smtp` | `TSmtpSender`, `TSmtpOptions`, `IEmailTokenProvider`, `ISmtpConnector` |
 | `PascalEmail.Version` | `pascal_email_faa` | `PASCALEMAIL_VERSION` (`MMmmpp`) |
 
@@ -127,6 +128,24 @@ LMock.FailNext(EEmailTransient);        // the next Send raises it
 
 `TFileEmailSender.Create('outbox')` writes each message as an `.eml` file you can open in any
 mail client.
+
+## Development and staging
+
+- **On a developer's machine**: point the SMTP sender at a capture server such as
+  [Mailpit](https://mailpit.axllent.org) (`docker run -p 1025:1025 -p 8025:8025
+  axllent/mailpit`, then `TSmtpOptions.Create('localhost', 1025, ssNone)`): the real code path,
+  nothing leaves the machine, every message on `http://localhost:8025`. Or `TFileEmailSender`.
+- **Staging with real data and a real engine**, wrap the sender (`PascalEmail.Decorators`):
+
+  ```pascal
+  // Everything goes to the QA mailbox; X-Original-To/Cc/Bcc say who it was for.
+  LSender := TRedirectEmailSender.Create(LSmtp, ['qa@empresa.com.br'], '[HOMOLOG] ');
+  // Or: deliver only inside the company; the rest is reported in Result.Rejected.
+  LSender := TAllowlistEmailSender.Create(LSmtp, ['@empresa.com.br', 'dono@gmail.com']);
+  ```
+
+  Neither changes your message, and a message with no allowed recipient is skipped, not an
+  error.
 
 ## Building and testing this library
 

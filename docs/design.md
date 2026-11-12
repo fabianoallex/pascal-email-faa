@@ -303,3 +303,31 @@ dropped by SMTP; Q6 no templates; Q7 no DKIM in 0.x. The original questions:
   and its parsed JSON) and checks, besides delivery, that the raw message after Mailpit's own
   lines is the library's MIME byte for byte (finding 4).
 
+## 11. Development and staging: decorators (2026-11-12)
+
+How an application avoids mailing real people outside production. Accepted with the user on
+2026-11-12. For a developer's machine, the answer needs no code: an SMTP sender pointed at a
+capture server (Mailpit, as the integration suite) keeps the real path (TLS, AUTH, MIME,
+refusals) and shows every message in a web page, or `TFileEmailSender` writes `.eml` files.
+The risk is a shared or staging environment with real data and a real engine, which the
+decorators cover (`PascalEmail.Decorators`, core, no new dependency):
+
+- **E22. `TRedirectEmailSender(Inner, ['qa@...'], Prefix)`** sends every message to fixed
+  addresses instead of its recipients; the originals go in `X-Original-To`, `X-Original-Cc` and
+  `X-Original-Bcc` (Bcc too: the reader is the team), and the subject gets `Prefix`
+  (`'[REDIRECTED] '` by default, `''` for none).
+- **E23. `TAllowlistEmailSender(Inner, ['@empresa.com.br', 'ana@example.com'])`** delivers only
+  to listed addresses and domains (`@domain`: that domain exactly, without case; not its
+  subdomains, so `@empresa.com` doesn't admit `x@minhaempresa.com` nor `x@mail.empresa.com`).
+  The others are reported in `Rejected` with `Code` 0 and `EMAIL_NOT_ALLOWED_TEXT`, the shape of
+  an SMTP partial refusal, and To/Cc/Bcc roles are kept. A message with no allowed recipient
+  isn't handed to the inner sender at all and is **not an error**: `ProviderId` '' and every
+  recipient in `Rejected` (staging must not fail where production would succeed).
+- **E24. Both validate the caller's message first** (`Validate`: a missing From or recipient is
+  `EEmailArgumentError` before anything, as a real engine) **and send a copy**
+  (`EmailCopyMessage`, in `PascalEmail.Message`): the caller's message is never changed. The
+  inner sender's exceptions pass through unchanged; `SendMany` goes to the inner `SendMany`, so
+  SMTP keeps one connection.
+- **E25. No configuration-driven factory in 0.1.** Choosing the sender by environment (`smtp`,
+  `file`, `redirect:...`) is a few lines in the application's composition root; a factory can
+  come when a second application wants the same one.

@@ -25,13 +25,15 @@ uses
   PascalEmail.Interfaces in '..\..\src\PascalEmail.Interfaces.pas',
   PascalEmail.Mock in '..\..\src\PascalEmail.Mock.pas',
   PascalEmail.FileSender in '..\..\src\PascalEmail.FileSender.pas',
+  PascalEmail.Decorators in '..\..\src\PascalEmail.Decorators.pas',
   PascalEmail.Smtp in '..\..\adapters\smtp\PascalEmail.Smtp.pas',
   PascalEmail.DUnitXCompat in 'PascalEmail.DUnitXCompat.pas',
   PascalEmail.TestSupport in 'PascalEmail.TestSupport.pas',
   PascalEmail.AddressTests in 'PascalEmail.AddressTests.pas',
   PascalEmail.MimeTests in 'PascalEmail.MimeTests.pas',
   PascalEmail.MockTests in 'PascalEmail.MockTests.pas',
-  PascalEmail.SmtpTests in 'PascalEmail.SmtpTests.pas';
+  PascalEmail.SmtpTests in 'PascalEmail.SmtpTests.pas',
+  PascalEmail.DecoratorTests in 'PascalEmail.DecoratorTests.pas';
 
 var
   runner: ITestRunner;

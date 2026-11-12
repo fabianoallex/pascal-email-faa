@@ -8,7 +8,7 @@ may change the API; each such change is listed here.
 
 ## [0.1.0] - unreleased
 
-First version (`docs/design.md`, E1-E21; `docs/findings.md`, findings 1-8).
+First version (`docs/design.md`, E1-E25; `docs/findings.md`, findings 1-8).
 
 ### Added
 
@@ -26,6 +26,9 @@ First version (`docs/design.md`, E1-E21; `docs/findings.md`, findings 1-8).
   private CA), AUTH PLAIN, LOGIN and XOAUTH2 (`IEmailTokenProvider`), SIZE, partial recipient
   refusal reported in the result (`RequireAllRecipients` to refuse it), `SendMany` on one
   connection with `RSET` between messages.
-- Tests: the unit suite (94; a scripted SMTP server, exact MIME bytes) and the integration suite
+- `PascalEmail.Decorators` (design section 11): `TRedirectEmailSender` (every message to fixed
+  addresses, originals in `X-Original-*`, subject prefix) and `TAllowlistEmailSender` (only
+  listed addresses and `@domains`; the rest reported in `Rejected`); `EmailCopyMessage`.
+- Tests: the unit suite (112; a scripted SMTP server, exact MIME bytes) and the integration suite
   (18; Mailpit v1.33.1 in Docker, three servers), DUnitX masters with generated FPCUnit mirrors;
   `tools/ci-test.sh` and the GitHub Actions workflow (FPC 3.2.2 on Linux).

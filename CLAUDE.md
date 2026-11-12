@@ -17,10 +17,11 @@ This file records only what is specific to this repository.
 ## Where things stand (2026-11-12)
 
 - **0.1.0, not released** (first commit 2026-11-12). Core, mock, file
-  sender and the SMTP adapter. Unit 94/94 and integration 18/18, 0 leaks, on FPC 3.2.2 Windows
+  sender, the SMTP adapter and the decorators (redirect, allowlist; design section 11). Unit
+  112/112 and integration 18/18, 0 leaks, on FPC 3.2.2 Windows
   (SChannel and OpenSSL) and Linux (Docker, OpenSSL 3), and on Delphi 12 Win32 and Win64 (the
   user built both suites in the IDE; the `.exe` were run from here, 2026-11-12).
-- **Decisions**: `docs/design.md` (E1-E21, accepted 2026-11-12; Q1-Q7 closed with the
+- **Decisions**: `docs/design.md` (E1-E25, accepted 2026-11-12; Q1-Q7 closed with the
   proposals). **What servers and parsers did**: `docs/findings.md`, numbered; the design cites
   "finding N". Read both before changing the contract.
 - **Depends on pascal-common-faa 1.32.0** (`PcBase64Encode`/`PcBase64Decode`, added for this

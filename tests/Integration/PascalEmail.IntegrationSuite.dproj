@@ -121,6 +121,7 @@
         <DCCReference Include="..\..\src\PascalEmail.Interfaces.pas"/>
         <DCCReference Include="..\..\src\PascalEmail.Mock.pas"/>
         <DCCReference Include="..\..\src\PascalEmail.FileSender.pas"/>
+        <DCCReference Include="..\..\src\PascalEmail.Decorators.pas"/>
         <DCCReference Include="..\..\adapters\smtp\PascalEmail.Smtp.pas"/>
         <DCCReference Include="..\Unit\PascalEmail.DUnitXCompat.pas"/>
         <DCCReference Include="..\Unit\PascalEmail.TestSupport.pas"/>

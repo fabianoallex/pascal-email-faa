@@ -121,6 +121,7 @@
         <DCCReference Include="..\..\src\PascalEmail.Interfaces.pas"/>
         <DCCReference Include="..\..\src\PascalEmail.Mock.pas"/>
         <DCCReference Include="..\..\src\PascalEmail.FileSender.pas"/>
+        <DCCReference Include="..\..\src\PascalEmail.Decorators.pas"/>
         <DCCReference Include="..\..\adapters\smtp\PascalEmail.Smtp.pas"/>
         <DCCReference Include="PascalEmail.DUnitXCompat.pas"/>
         <DCCReference Include="PascalEmail.TestSupport.pas"/>
@@ -128,6 +129,7 @@
         <DCCReference Include="PascalEmail.MimeTests.pas"/>
         <DCCReference Include="PascalEmail.MockTests.pas"/>
         <DCCReference Include="PascalEmail.SmtpTests.pas"/>
+        <DCCReference Include="PascalEmail.DecoratorTests.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

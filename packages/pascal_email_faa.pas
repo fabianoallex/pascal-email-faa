@@ -10,7 +10,8 @@ interface
 uses
   PascalEmail.Version, PascalEmail.Errors, PascalEmail.Address, 
   PascalEmail.Message, PascalEmail.Mime, PascalEmail.Interfaces, 
-  PascalEmail.Mock, PascalEmail.FileSender, PascalEmail.Decorators;
+  PascalEmail.Mock, PascalEmail.FileSender, PascalEmail.Decorators, 
+  PascalEmail.Telemetry;
 
 implementation
 

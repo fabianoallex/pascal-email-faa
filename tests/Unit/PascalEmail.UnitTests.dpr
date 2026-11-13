@@ -26,6 +26,7 @@ uses
   PascalEmail.Mock in '..\..\src\PascalEmail.Mock.pas',
   PascalEmail.FileSender in '..\..\src\PascalEmail.FileSender.pas',
   PascalEmail.Decorators in '..\..\src\PascalEmail.Decorators.pas',
+  PascalEmail.Telemetry in '..\..\src\PascalEmail.Telemetry.pas',
   PascalEmail.Smtp in '..\..\adapters\smtp\PascalEmail.Smtp.pas',
   PascalEmail.AwsSigV4 in '..\..\adapters\ses\PascalEmail.AwsSigV4.pas',
   PascalEmail.Ses in '..\..\adapters\ses\PascalEmail.Ses.pas',
@@ -36,7 +37,8 @@ uses
   PascalEmail.MockTests in 'PascalEmail.MockTests.pas',
   PascalEmail.SmtpTests in 'PascalEmail.SmtpTests.pas',
   PascalEmail.DecoratorTests in 'PascalEmail.DecoratorTests.pas',
-  PascalEmail.SesTests in 'PascalEmail.SesTests.pas';
+  PascalEmail.SesTests in 'PascalEmail.SesTests.pas',
+  PascalEmail.TelemetryTests in 'PascalEmail.TelemetryTests.pas';
 
 var
   runner: ITestRunner;

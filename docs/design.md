@@ -2,7 +2,7 @@
 
 Status: **accepted 2026-11-12, with the proposed answers to every open question** (section 9).
 Core, mock, file sender and the SMTP adapter implemented the same day; section 10 lists what the
-implementation settled. The probe of section 8 ran against Mailpit; "finding N" points to
+implementation settled. Telemetry (section 13) accepted and implemented 2026-11-13. The probe of section 8 ran against Mailpit; "finding N" points to
 [`findings.md`](findings.md). Every decision is numbered (E1...).
 
 ## 1. Scope
@@ -361,3 +361,79 @@ account: validated against AWS's and botocore's vectors (findings 9-12).
   refused connection be `EEmailTransient`; not needed for retries (both classes are
   retryable), so not proposed yet.
 - **E29. The clock is TClock** (`EmailUtcNow`), so a test fixes the signing time.
+
+## 13. Telemetry (2026-11-13)
+
+Accepted with the user on 2026-11-13, before 0.1.0 is published (the contract is still free).
+pascal-common-faa 1.33.0 brought `PascalCommon.Http.Telemetry` (its
+`docs/http-telemetry-design.md`, HT1-HT11), which pascal-api-infra-faa 0.34.0 and
+pascal-search-faa 0.3.0 already use. OpenTelemetry has no conventions for e-mail: the names
+below are this library's (prefix `pascalemail.`, as pascal-db-faa uses `pascaldb.`), with the
+general attributes (`server.address`, `server.port`, `error.type`) where they fit.
+
+- **E30. The SES adapter wraps its HTTP transport with `PcNewTracedHttpTransport`, always**:
+  the one it creates and the one given to `Create` (the tests' fake, an application's own), as
+  pascal-search-faa does (its S32), so the tests go through the production path. A caller must
+  not pass a transport already wrapped (two spans and two points per call; the unit's header
+  says so). Zeroed options: the `POST` span carries the method, `server.address`
+  (`email.<region>.amazonaws.com` or the endpoint), `url.full` (the base URL and the fixed
+  path, no query), the status and `error.type`; the body (the MIME, with its recipients) goes
+  to neither the span nor the metric. The `traceparent` is added after `AwsSigV4Sign`, outside
+  `SignedHeaders`, so the signature doesn't change (finding 13, reasoned, not measured against
+  AWS). `error.type = EPcHttpTransport` on that span is exactly the case the sender raises as
+  `EEmailOutcomeUnknown`. pascal-common-faa 1.33.0 for the SES adapter (`$MESSAGE FATAL` in
+  `PascalEmail.Ses`, `MinVersion` in its `.lpk`); the core and SMTP stay on 1.32.0 (`Tracing`
+  and `Metrics` exist since 1.7.0 and 1.6.0).
+- **E31. Every sender instruments itself; no decorator.** A decorator around a sender only sees
+  a `SendMany` as a whole: the loop over messages (and SMTP's one connection) is inside the
+  sender, so a decorator can't time or describe each message, and only the sender knows its
+  server. `PascalEmail.Telemetry` (core) holds the shared code (`TEmailSendTelemetry`,
+  `TEmailBatchTelemetry`), called by SMTP, SES, the file sender and the mock (so an application
+  can test its own tracing without a server); `TEmailSenderBase.SendMany` opens the batch span.
+  Always on, as pascal-db-faa's statements and the HTTP adapters: a span costs microseconds and
+  nothing is exported until the application starts tracing. The redirect and allowlist
+  decorators record nothing themselves (E35).
+- **E32. The span `email send`, one per message**, started and finished on the calling thread: a
+  child of the thread's current span, or the root of a new trace when there is none (as
+  pascal-db-faa's statements; there is no exporter loop here, unlike HT3). Kind client (SMTP,
+  file, mock), internal where a lower layer already makes the client span (SES: the `POST` is
+  its child). Attributes: `pascalemail.sender`, `pascalemail.recipients` (the envelope: To + Cc
+  + Bcc), `pascalemail.message_id` (set as soon as the MIME is written, so a failure keeps it),
+  `pascalemail.provider_id` (SMTP's queue id, SES's MessageId, the file's path, `mock-N`),
+  `pascalemail.rejected` (when > 0), `server.address` and `server.port` (SMTP: the options' host
+  and effective port); on failure `error.type` (the class), `pascalemail.reply.code` and
+  `pascalemail.reply.enhanced_code`. A partial refusal isn't an error (status unset).
+  **Never an address, a subject, a body or an exception's message**: the SMTP refusal quotes
+  the recipient (`550 5.1.1 <bob@...>: Recipient address rejected`, and `EEmailRejected`'s
+  message carries it), SES lists identities that failed a check, `EEmailArgumentError` names
+  the address it refused. A failed span's status description is `<class> <code> <enhanced
+  code>` only (`EEmailRejected 550 5.1.1`). The Message-ID and the provider id are generated,
+  not personal, and correlate a span with a server's or provider's log; a caller that sets a
+  Message-ID with personal data in it sends it to the collector (README).
+- **E33. Metrics, on `PcMetrics`**: the histogram `pascalemail.send.duration` (`s`,
+  `PC_DURATION_BUCKETS`; labels `pascalemail.sender`, `error.type`, `''` on success), one point
+  per message; its count is the number of sends and of failures, so there is no counter for
+  them. The counter `pascalemail.recipients` (`{recipient}`; `pascalemail.sender`,
+  `pascalemail.outcome` = `accepted` | `rejected`) for messages handed over: a send that raised
+  counts no recipient (an SMTP send with every recipient refused is an `EEmailRejected` point of
+  the histogram). Never a recipient's domain (cardinality, privacy). Duration from `PcTickUs`:
+  SMTP's `Send` includes connecting, TLS, EHLO and AUTH; in a `SendMany` the first message
+  carries them, and a reconnection falls on the message that needed it.
+- **E34. `SendMany`: both levels.** A span `email send_many` (internal; `pascalemail.sender`,
+  `pascalemail.messages`, `pascalemail.failed`) around the batch, with each message's `email
+  send` as its child. It covers what belongs to no message (SMTP's `QUIT`). Failures are in the
+  outcomes, so the batch span is an error only when an exception escapes (a bug).
+- **E35. The decorators record what went out.** With the instrumentation inside the senders,
+  a redirect's span counts the QA mailbox, an allowlist's counts the allowed recipients, and an
+  allowlist that drops every recipient makes no span and no point (nothing was sent).
+  Recording what the application asked for would need a decorator outside them; not wanted
+  now.
+- **The outbox (E11), when the bridge exists**: pascal-db-faa's `TOutbox.Enqueue` keeps the
+  current span's `traceparent`, and the relay opens `outbox <kind>` with `StartSpanFromParent`
+  before calling the sink, so an e-mail queued during a request continues its trace: `email
+  send` (and SES's `POST`) become children of the outbox span with nothing extra. To be
+  confirmed in the bridge's design.
+- Tests: `PascalEmail.TelemetryTests` (mock, the scripted SMTP server, the decorators) and the
+  SES suite's `Telemetry_` tests over the fake HTTP transport, with `TPcTracing.Start(...,
+  AAutoFlush = False)`, `TCapturingSpanExporter` and `FlushNow`, and the metrics read before and
+  after; two `Telemetry_` tests in the integration suite against Mailpit.

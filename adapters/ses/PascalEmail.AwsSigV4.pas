@@ -1,4 +1,4 @@
-unit PascalEmail.AwsSigV4;
+﻿unit PascalEmail.AwsSigV4;
 
 {$I pascalemail.inc}
 

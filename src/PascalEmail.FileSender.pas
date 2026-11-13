@@ -12,7 +12,11 @@
   Message-ID with every character other than letters, digits, '.', '-' and
   '_' turned into '_' (unique: the generated ids are random); ProviderId is
   the full path. A failure to write is EEmailTransient (a full disk or a
-  missing share can come back). }
+  missing share can come back).
+
+  Each send is recorded (PascalEmail.Telemetry: an 'email send' client
+  span, sender 'file', and the metrics); provider_id on the span is the
+  file's path. }
 
 interface
 
@@ -20,14 +24,18 @@ uses
   SysUtils,
   PascalEmail.Errors,
   PascalEmail.Message,
+  PascalCommon.Tracing,
   PascalEmail.Mime,
-  PascalEmail.Interfaces;
+  PascalEmail.Interfaces,
+  PascalEmail.Telemetry;
 
 type
   TFileEmailSender = class(TEmailSenderBase)
   private
     FDirectory: string;
     FIds: IEmailIdSource;
+    function WriteMessage(const AMessage: IEmailMessage;
+      var ARec: TEmailSendTelemetry): TEmailSendResult;
   public
     /// ADirectory is created when missing. AIds nil = random ids.
     constructor Create(const ADirectory: string; const AIds: IEmailIdSource = nil);
@@ -67,11 +75,30 @@ end;
 
 function TFileEmailSender.Send(const AMessage: IEmailMessage): TEmailSendResult;
 var
+  LRec: TEmailSendTelemetry;
+begin
+  LRec := TEmailSendTelemetry.Start(Name, skClient, AMessage);
+  try
+    Result := WriteMessage(AMessage, LRec);
+    LRec.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LRec.Fail(E);
+      raise;
+    end;
+  end;
+end;
+
+function TFileEmailSender.WriteMessage(const AMessage: IEmailMessage;
+  var ARec: TEmailSendTelemetry): TEmailSendResult;
+var
   LMime: TEmailMime;
   LPath, LTemp: string;
   LStream: TFileStream;
 begin
   LMime := EmailBuildMime(AMessage, FIds);
+  ARec.Identify(LMime.MessageId);
   LPath := FDirectory + SafeFileName(LMime.MessageId) + '.eml';
   LTemp := LPath + '.tmp';
   try

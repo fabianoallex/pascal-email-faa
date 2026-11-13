@@ -8,7 +8,7 @@ may change the API; each such change is listed here.
 
 ## [0.1.0] - unreleased
 
-First version (`docs/design.md`, E1-E29; `docs/findings.md`, findings 1-12).
+First version (`docs/design.md`, E1-E35; `docs/findings.md`, findings 1-13).
 
 ### Added
 
@@ -33,6 +33,12 @@ First version (`docs/design.md`, E1-E29; `docs/findings.md`, findings 1-12).
   `SendEmail` with the raw MIME, explicit envelope, `EmailTags`, configuration sets, static
   credentials or an `ISesCredentialsProvider`) and `PascalEmail.AwsSigV4` (Signature Version 4,
   checked against AWS's vectors and botocore; findings 9-12).
-- Tests: the unit suite (137; a scripted SMTP server, exact MIME bytes) and the integration suite
-  (18; Mailpit v1.33.1 in Docker, three servers), DUnitX masters with generated FPCUnit mirrors;
+- Telemetry (design section 13): `PascalEmail.Telemetry`; every sender (SMTP, SES, file, mock)
+  records an `email send` span per message and an `email send_many` span per batch, the histogram
+  `pascalemail.send.duration` and the counter `pascalemail.recipients`, with no address, subject,
+  body or exception text. The SES adapter wraps its HTTP transport with pascal-common-faa's
+  `PcNewTracedHttpTransport` and so needs pascal-common-faa **1.33.0** (finding 13: the
+  `traceparent` is outside the SigV4 signature).
+- Tests: the unit suite (151; a scripted SMTP server, exact MIME bytes) and the integration suite
+  (20; Mailpit v1.33.1 in Docker, three servers), DUnitX masters with generated FPCUnit mirrors;
   `tools/ci-test.sh` and the GitHub Actions workflow (FPC 3.2.2 on Linux).

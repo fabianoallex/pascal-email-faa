@@ -13,6 +13,11 @@
   The expected replies were measured first with a probe (docs/findings.md,
   findings 1-6).
 
+  The Telemetry_ tests start tracing without its export thread and read the
+  spans after FlushNow (TCapturingSpanExporter, TestSupport) and the metrics
+  before and after (design, section 13): a real server's partial refusal
+  and a SendMany over one connection, as the spans and metrics show them.
+
   DUnitX master, written in FPCUnit's assertion dialect (TAssert.*, through
   PascalEmail.DUnitXCompat). The mirror in tests/Integration/fpc is
   generated from the master by tools/gen_fpc_mirror.py: edit only the
@@ -26,11 +31,13 @@ uses
   SysUtils,
   Classes,
   PascalCommon.Transport,
+  PascalCommon.Tracing,
   PascalEmail.Errors,
   PascalEmail.Message,
   PascalEmail.Mime,
   PascalEmail.Interfaces,
   PascalEmail.Smtp,
+  PascalEmail.Telemetry,
   PascalEmail.TestSupport,
   PascalEmail.IntegrationEnv;
 
@@ -60,6 +67,8 @@ type
     [Test] procedure ClosedPort_Transient;
     [Test] procedure SendMany_OneConnection_AllDelivered;
     [Test] procedure SharedSender_FourThreads_AllDelivered;
+    [Test] procedure Telemetry_PartialRefusal_SpanAndMetrics;
+    [Test] procedure Telemetry_SendMany_BatchAndMessages;
   end;
 
 implementation
@@ -432,6 +441,92 @@ begin
   end;
   TAssert.AssertEquals('failures (' + LError + ')', 0, LFailures);
   TAssert.AssertEquals(20, MailpitCount(StartTlsApi));
+end;
+
+function SpanText(const AData: TPcSpanData; const AKey: string): string;
+begin
+  SpanAttribute(AData, AKey, Result);
+end;
+
+procedure TSmtpIntegrationTests.Telemetry_PartialRefusal_SpanAndMetrics;
+var
+  LExporterObj: TCapturingSpanExporter;
+  LExporter: IPcSpanExporter;
+  LSender: IEmailSender;
+  LParent: IPcSpan;
+  LSpans: TPcSpanDataArray;
+  R: TEmailSendResult;
+  LDuration, LRejected: Double;
+  I: Integer;
+begin
+  LExporterObj := TCapturingSpanExporter.Create;
+  LExporter := LExporterObj;
+  TPcTracing.Start(TPcTracingOptions.Default('it', '1.0.0'), LExporter, False);
+  try
+    LDuration := MetricPointCount(EMAIL_SEND_DURATION_METRIC, ['smtp', '']);
+    LRejected := MetricPointCount(EMAIL_RECIPIENTS_METRIC, ['smtp', 'rejected']);
+    LSender := TSmtpSender.Create(StartTlsOptions);
+    LParent := TPcTracing.StartSpan('job');
+    try
+      R := LSender.Send(Msg('telemetry').AddTo('nobody@refused.example'));
+    finally
+      LParent.Finish;
+    end;
+    TPcTracing.FlushNow;
+    LSpans := LExporterObj.Named(EMAIL_SEND_SPAN);
+    TAssert.AssertEquals(1, Length(LSpans));
+    TAssert.AssertEquals(LParent.SpanId, LSpans[0].ParentSpanId);
+    LParent := nil;
+    TAssert.AssertEquals(StartTlsHost, SpanText(LSpans[0], 'server.address'));
+    TAssert.AssertEquals(IntToStr(StartTlsPort), SpanText(LSpans[0], 'server.port'));
+    TAssert.AssertEquals('2', SpanText(LSpans[0], 'pascalemail.recipients'));
+    TAssert.AssertEquals('1', SpanText(LSpans[0], 'pascalemail.rejected'));
+    TAssert.AssertEquals(R.MessageId, SpanText(LSpans[0], 'pascalemail.message_id'));
+    // Mailpit's id: the message can be read back by it (finding 3).
+    TAssert.AssertEquals(R.ProviderId, SpanText(LSpans[0], 'pascalemail.provider_id'));
+    TAssert.AssertTrue(Pos('telemetry', MailpitRaw(StartTlsApi, R.ProviderId)) > 0);
+    for I := 0 to High(LSpans[0].Attributes) do
+      if LSpans[0].Attributes[I].Key <> 'pascalemail.message_id' then
+        TAssert.AssertEquals(LSpans[0].Attributes[I].Key, 0,
+          Pos('@', SpanText(LSpans[0], LSpans[0].Attributes[I].Key)));
+    TAssert.AssertEquals(LDuration + 1,
+      MetricPointCount(EMAIL_SEND_DURATION_METRIC, ['smtp', '']), 0);
+    TAssert.AssertEquals(LRejected + 1,
+      MetricPointCount(EMAIL_RECIPIENTS_METRIC, ['smtp', 'rejected']), 0);
+  finally
+    TPcTracing.Shutdown;
+  end;
+end;
+
+procedure TSmtpIntegrationTests.Telemetry_SendMany_BatchAndMessages;
+var
+  LExporterObj: TCapturingSpanExporter;
+  LExporter: IPcSpanExporter;
+  LSender: IEmailSender;
+  LBatch, LSpans: TPcSpanDataArray;
+  O: TEmailSendOutcomes;
+begin
+  LExporterObj := TCapturingSpanExporter.Create;
+  LExporter := LExporterObj;
+  TPcTracing.Start(TPcTracingOptions.Default('it', '1.0.0'), LExporter, False);
+  try
+    LSender := TSmtpSender.Create(StartTlsOptions);
+    O := LSender.SendMany([Msg('one'), Msg('two'), Msg('three')]);
+    TAssert.AssertTrue(O[0].Sent and O[1].Sent and O[2].Sent);
+    TPcTracing.FlushNow;
+    LBatch := LExporterObj.Named(EMAIL_SEND_MANY_SPAN);
+    LSpans := LExporterObj.Named(EMAIL_SEND_SPAN);
+    TAssert.AssertEquals(1, Length(LBatch));
+    TAssert.AssertEquals('3', SpanText(LBatch[0], 'pascalemail.messages'));
+    TAssert.AssertEquals('0', SpanText(LBatch[0], 'pascalemail.failed'));
+    TAssert.AssertEquals(3, Length(LSpans));
+    TAssert.AssertEquals(LBatch[0].SpanId, LSpans[0].ParentSpanId);
+    TAssert.AssertEquals(LBatch[0].SpanId, LSpans[2].ParentSpanId);
+    TAssert.AssertEquals(O[1].SendResult.ProviderId, SpanText(LSpans[1], 'pascalemail.provider_id'));
+    TAssert.AssertEquals(3, MailpitCount(StartTlsApi));
+  finally
+    TPcTracing.Shutdown;
+  end;
 end;
 
 initialization

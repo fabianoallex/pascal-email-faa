@@ -20,6 +20,14 @@
   mapping tests come from the SES v2 API reference (finding 12): there was
   no account to measure them.
 
+  The Telemetry_ tests start tracing without its export thread
+  (AAutoFlush = False) and read the spans from TCapturingSpanExporter after
+  FlushNow, and the histogram http.client.request.duration from PcMetrics
+  before and after (design, section 13): the traceparent reaches the fake
+  and the signature doesn't change (finding 13), the POST is a child of the
+  sender's 'email send' span, nothing personal goes to it, and a lost
+  answer is error.type EPcHttpTransport.
+
   DUnitX master, written in FPCUnit's assertion dialect (TAssert.*, through
   PascalEmail.DUnitXCompat). The mirror in tests/Unit/fpc is generated from
   the master by tools/gen_fpc_mirror.py: edit only the master. }
@@ -34,10 +42,14 @@ uses
   PascalCommon.Http,
   PascalCommon.Http.Fake,
   PascalCommon.SystemContext,
+  PascalCommon.TraceContext,
+  PascalCommon.Tracing,
+  PascalCommon.Http.Telemetry,
   PascalEmail.Errors,
   PascalEmail.Message,
   PascalEmail.Mime,
   PascalEmail.Interfaces,
+  PascalEmail.Telemetry,
   PascalEmail.AwsSigV4,
   PascalEmail.Ses,
   PascalEmail.TestSupport;
@@ -47,6 +59,10 @@ type
   private
     FFake: TPcFakeHttpTransport;
     FHttp: IPcHttpTransport;
+    FExporterObj: TCapturingSpanExporter;
+    FExporter: IPcSpanExporter;
+    procedure StartTracing;
+    function Attr(const AData: TPcSpanData; const AKey: string): string;
     function ExampleCredentials: TAwsCredentials;
     function Options: TSesOptions;
     function Sender(const AOptions: TSesOptions): IEmailSender;
@@ -82,6 +98,10 @@ type
     procedure Errors_CarryStatusAndText;
     procedure Create_RefusesBadOptions;
     procedure SendMany_OnePerMessage;
+    procedure Telemetry_TraceParentSent_SignatureUnchanged;
+    procedure Telemetry_Span_AttributesWithoutPersonalData;
+    procedure Telemetry_NoAnswer_ErrorTypeTransport;
+    procedure Telemetry_HttpMetric_PerStatus;
   end;
 
 implementation
@@ -154,6 +174,22 @@ begin
   TClock.Reset;
   FHttp := nil;
   FFake := nil;
+  // Stopping tracing that wasn't started does nothing.
+  TPcTracing.Shutdown;
+  FExporter := nil;
+  FExporterObj := nil;
+end;
+
+function TSesTests.Attr(const AData: TPcSpanData; const AKey: string): string;
+begin
+  SpanAttribute(AData, AKey, Result);
+end;
+
+procedure TSesTests.StartTracing;
+begin
+  FExporterObj := TCapturingSpanExporter.Create;
+  FExporter := FExporterObj;
+  TPcTracing.Start(TPcTracingOptions.Default('svc', '1.0.0'), FExporter, False);
 end;
 
 function TSesTests.Options: TSesOptions;
@@ -547,6 +583,143 @@ begin
   TAssert.AssertFalse(O[2].Sent);
   TAssert.AssertTrue(O[2].ErrorClass = EEmailArgumentError);
   TAssert.AssertEquals(2, FFake.RequestCount);
+end;
+
+{ Telemetry (design, section 13) }
+
+procedure TSesTests.Telemetry_TraceParentSent_SignatureUnchanged;
+var
+  LParent: IPcSpan;
+  LSpans: TPcSpanDataArray;
+  LFirst, LSecond: TPcHttpRequest;
+begin
+  StartTracing;
+  FFake.Answer(200, '{"MessageId":"a"}');
+  FFake.Answer(200, '{"MessageId":"b"}');
+  // Two senders, so both requests carry Message-ID id1 and the same body;
+  // the clock is fixed, so they are signed at the same time. Each is under
+  // a span of its own, so each carries another traceparent.
+  Sender(Options).Send(Msg);
+  LParent := TPcTracing.StartSpan('job');
+  try
+    Sender(Options).Send(Msg);
+  finally
+    LParent.Finish;
+  end;
+  LParent := nil;
+  TPcTracing.FlushNow;
+  LFirst := FFake.Request(0);
+  LSecond := FFake.Request(1);
+  LSpans := FExporterObj.Named('POST');
+  TAssert.AssertEquals(2, Length(LSpans));
+  TAssert.AssertEquals(PcFormatTraceParent(LSpans[0].TraceId, LSpans[0].SpanId, True),
+    LFirst.Header('traceparent'));
+  TAssert.AssertEquals(PcFormatTraceParent(LSpans[1].TraceId, LSpans[1].SpanId, True),
+    LSecond.Header('traceparent'));
+  TAssert.AssertTrue(LFirst.Header('traceparent') <> LSecond.Header('traceparent'));
+  TAssert.AssertEquals(LFirst.Body, LSecond.Body);
+  TAssert.AssertEquals(LFirst.Header('X-Amz-Date'), LSecond.Header('X-Amz-Date'));
+  // The signature was made before the traceparent was added, and doesn't
+  // cover it: another traceparent, the same Authorization.
+  TAssert.AssertEquals(LFirst.Header('Authorization'), LSecond.Header('Authorization'));
+  TAssert.AssertEquals(0, Pos('traceparent', LSecond.Header('Authorization')));
+end;
+
+procedure TSesTests.Telemetry_Span_AttributesWithoutPersonalData;
+var
+  LParent: IPcSpan;
+  LSpans, LSend: TPcSpanDataArray;
+  LValue: string;
+  I: Integer;
+begin
+  StartTracing;
+  FFake.Answer(200, '{"MessageId":"a"}');
+  LParent := TPcTracing.StartSpan('job');
+  try
+    Sender(Options).Send(Msg.AddTag('welcome'));
+  finally
+    LParent.Finish;
+  end;
+  TPcTracing.FlushNow;
+  // job > email send (internal) > POST (client).
+  LSend := FExporterObj.Named(EMAIL_SEND_SPAN);
+  TAssert.AssertEquals(1, Length(LSend));
+  TAssert.AssertTrue(LSend[0].Kind = skInternal);
+  TAssert.AssertEquals(LParent.SpanId, LSend[0].ParentSpanId);
+  LParent := nil;
+  TAssert.AssertEquals('ses', Attr(LSend[0], 'pascalemail.sender'));
+  TAssert.AssertEquals('a', Attr(LSend[0], 'pascalemail.provider_id'));
+  LSpans := FExporterObj.Named('POST');
+  TAssert.AssertEquals(1, Length(LSpans));
+  TAssert.AssertTrue(LSpans[0].Kind = skClient);
+  TAssert.AssertEquals(LSend[0].SpanId, LSpans[0].ParentSpanId);
+  TAssert.AssertTrue(SpanAttribute(LSpans[0], 'server.address', LValue));
+  TAssert.AssertEquals('email.sa-east-1.amazonaws.com', LValue);
+  TAssert.AssertTrue(SpanAttribute(LSpans[0], 'url.full', LValue));
+  TAssert.AssertEquals(SES_URL, LValue);
+  TAssert.AssertTrue(SpanAttribute(LSpans[0], 'http.response.status_code', LValue));
+  TAssert.AssertEquals('200', LValue);
+  TAssert.AssertFalse(SpanAttribute(LSpans[0], 'error.type', LValue));
+  // No address, subject, tag or body in any attribute of the HTTP span.
+  for I := 0 to High(LSpans[0].Attributes) do
+  begin
+    SpanAttribute(LSpans[0], LSpans[0].Attributes[I].Key, LValue);
+    TAssert.AssertEquals(LSpans[0].Attributes[I].Key, 0, Pos('@', LValue));
+    TAssert.AssertEquals(LSpans[0].Attributes[I].Key, 0, Pos('Ol', LValue));
+    TAssert.AssertEquals(LSpans[0].Attributes[I].Key, 0, Pos('welcome', LValue));
+    TAssert.AssertTrue(LSpans[0].Attributes[I].Key, Length(LValue) < 100);
+  end;
+  TAssert.AssertEquals('', LSpans[0].StatusMessage);
+end;
+
+procedure TSesTests.Telemetry_NoAnswer_ErrorTypeTransport;
+var
+  LParent: IPcSpan;
+  LSpans: TPcSpanDataArray;
+  LValue: string;
+begin
+  StartTracing;
+  FFake.Fail('connection reset');
+  LParent := TPcTracing.StartSpan('job');
+  try
+    try
+      Sender(Options).Send(Msg);
+      TAssert.Fail('no answer taken as sent');
+    except
+      on E: EEmailOutcomeUnknown do
+        ;
+    end;
+  finally
+    LParent.Finish;
+  end;
+  LParent := nil;
+  TPcTracing.FlushNow;
+  LSpans := FExporterObj.Named('POST');
+  TAssert.AssertEquals(1, Length(LSpans));
+  TAssert.AssertTrue(LSpans[0].Status = ssError);
+  TAssert.AssertTrue(SpanAttribute(LSpans[0], 'error.type', LValue));
+  TAssert.AssertEquals('EPcHttpTransport', LValue);
+  // The send's own span says what the sender made of it.
+  LSpans := FExporterObj.Named(EMAIL_SEND_SPAN);
+  TAssert.AssertEquals(1, Length(LSpans));
+  TAssert.AssertEquals('EEmailOutcomeUnknown', Attr(LSpans[0], 'error.type'));
+end;
+
+procedure TSesTests.Telemetry_HttpMetric_PerStatus;
+var
+  LBefore200, LBefore503: Double;
+begin
+  LBefore200 := MetricPointCount(PC_HTTP_CLIENT_DURATION_METRIC,
+    ['POST', 'email.sa-east-1.amazonaws.com', '443', 'https', '200', '']);
+  LBefore503 := MetricPointCount(PC_HTTP_CLIENT_DURATION_METRIC,
+    ['POST', 'email.sa-east-1.amazonaws.com', '443', 'https', '503', '503']);
+  FFake.Answer(200, '{"MessageId":"a"}');
+  Sender(Options).Send(Msg);
+  TAssert.AssertEquals('EEmailTransient', SendError(503, '{}', []));
+  TAssert.AssertEquals(LBefore200 + 1, MetricPointCount(PC_HTTP_CLIENT_DURATION_METRIC,
+    ['POST', 'email.sa-east-1.amazonaws.com', '443', 'https', '200', '']), 0);
+  TAssert.AssertEquals(LBefore503 + 1, MetricPointCount(PC_HTTP_CLIENT_DURATION_METRIC,
+    ['POST', 'email.sa-east-1.amazonaws.com', '443', 'https', '503', '503']), 0);
 end;
 
 initialization

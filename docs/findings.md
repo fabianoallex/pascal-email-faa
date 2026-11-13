@@ -96,3 +96,14 @@ the library to them (`PascalEmail.SesTests`); the probe is `.ci/probe-ses` (`vec
     from the headers unless `Destination` is given, and the sender from the From header when
     `FromEmailAddress` is left out. **The first real send should confirm these**; the mapping
     is one function (`TSesSender.RaiseForStatus`).
+
+13. **A `traceparent` added after signing doesn't change the SigV4 signature; reasoned, not
+    measured against AWS** (2026-11-13). The sender's transport is wrapped with
+    pascal-common-faa 1.33.0's `PcNewTracedHttpTransport` (design, section 13), which adds
+    `traceparent` (and `tracestate`, when the span has one) to a copy of the request after
+    `AwsSigV4Sign` has run. Those headers are outside `SignedHeaders`, and SigV4 verifies only
+    the headers listed there, so AWS should accept the request as before. The unit test
+    `Telemetry_TraceParentSent_SignatureUnchanged` shows the fake receives the span's
+    `traceparent` and that `Authorization`, `X-Amz-Date` and the body are identical to those of
+    the same request sent with no current span. What AWS does with an unsigned extra header is
+    from its documentation, as finding 12: **the first real send should confirm it.**

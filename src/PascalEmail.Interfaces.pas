@@ -13,8 +13,9 @@
   allows it; each message's failure is in its outcome, not raised, so one
   bad address doesn't stop the others.
 
-  TEmailSenderBase gives an engine SendMany as a loop over Send; the SMTP
-  adapter overrides it to keep one connection. }
+  TEmailSenderBase gives an engine SendMany as a loop over Send, inside an
+  'email send_many' span (PascalEmail.Telemetry); the SMTP adapter
+  overrides it to keep one connection. }
 
 interface
 
@@ -76,6 +77,9 @@ function EmailSentOutcome(const AResult: TEmailSendResult): TEmailSendOutcome;
 
 implementation
 
+uses
+  PascalEmail.Telemetry;
+
 function EmailFailedOutcome(E: Exception): TEmailSendOutcome;
 begin
   Result := Default(TEmailSendOutcome);
@@ -102,16 +106,27 @@ end;
 function TEmailSenderBase.SendMany(const AMessages: array of IEmailMessage): TEmailSendOutcomes;
 var
   I: Integer;
+  LBatch: TEmailBatchTelemetry;
 begin
   Result := nil;
   SetLength(Result, Length(AMessages));
-  for I := 0 to High(AMessages) do
-    try
-      Result[I] := EmailSentOutcome(Send(AMessages[I]));
-    except
-      on E: EEmailError do
-        Result[I] := EmailFailedOutcome(E);
+  LBatch := TEmailBatchTelemetry.Start(Name, Length(AMessages));
+  try
+    for I := 0 to High(AMessages) do
+      try
+        Result[I] := EmailSentOutcome(Send(AMessages[I]));
+      except
+        on E: EEmailError do
+          Result[I] := EmailFailedOutcome(E);
+      end;
+    LBatch.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LBatch.Fail(E);
+      raise;
     end;
+  end;
 end;
 
 end.

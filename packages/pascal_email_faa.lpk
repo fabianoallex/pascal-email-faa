@@ -57,6 +57,10 @@
         <Filename Value="..\src\PascalEmail.Decorators.pas"/>
         <UnitName Value="PascalEmail.Decorators"/>
       </Item>
+      <Item>
+        <Filename Value="..\src\PascalEmail.Telemetry.pas"/>
+        <UnitName Value="PascalEmail.Telemetry"/>
+      </Item>
     </Files>
     <RequiredPkgs>
       <Item>

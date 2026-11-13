@@ -15,8 +15,11 @@ whether a retry can help.
   in-memory mock for your tests, and an `.eml` file writer (development, pickup folders).
 - **Errors that say what to do**: invalid message, authentication, permanent refusal,
   transient failure, or "sent, but no answer came" (a retry may duplicate).
+- **Traces and metrics** on pascal-common-faa's `PascalCommon.Tracing` and `PcMetrics`: a span
+  per message and per batch, the send duration and recipient counts, never an address or a
+  subject.
 
-Status: **0.1.0, unreleased**. Unit suite 137 tests, integration suite 18 (SMTP against Mailpit:
+Status: **0.1.0, unreleased**. Unit suite 151 tests, integration suite 20 (SMTP against Mailpit:
 STARTTLS, implicit TLS, plain; a private CA), 0 leaks, on FPC 3.2.2 Windows (SChannel and
 OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [`docs/design.md`](docs/design.md); what servers did: [`docs/findings.md`](docs/findings.md).
 
@@ -32,6 +35,7 @@ OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [
 | `PascalEmail.Mock` | `pascal_email_faa` | `TMockEmailSender`: keeps what was sent, fails on demand |
 | `PascalEmail.FileSender` | `pascal_email_faa` | `TFileEmailSender`: one `.eml` per message |
 | `PascalEmail.Decorators` | `pascal_email_faa` | `TRedirectEmailSender`, `TAllowlistEmailSender`: development and staging |
+| `PascalEmail.Telemetry` | `pascal_email_faa` | what every sender records: span and metric names (`EMAIL_SEND_SPAN`, `EMAIL_SEND_DURATION_METRIC`...) |
 | `PascalEmail.Smtp` | `pascal_email_faa_smtp` | `TSmtpSender`, `TSmtpOptions`, `IEmailTokenProvider`, `ISmtpConnector` |
 | `PascalEmail.Ses` | `pascal_email_faa_ses` | `TSesSender`, `TSesOptions`, `ISesCredentialsProvider`: Amazon SES API v2 (raw MIME) |
 | `PascalEmail.AwsSigV4` | `pascal_email_faa_ses` | AWS Signature Version 4 (`AwsSigV4Sign`), checked against AWS's vectors |
@@ -41,8 +45,9 @@ OpenSSL 3) and Linux (OpenSSL 3), and on Delphi 12 Win32 and Win64. Decisions: [
 
 - Delphi 12 or Lazarus with FPC 3.2.2.
 - [pascal-common-faa](https://github.com/fabianoallex/pascal-common-faa) **1.32.0 or later**
-  (standard Base64, the TLS transport). One copy for the whole application: an application that
-  uses several `*-faa` libraries provides it once.
+  (standard Base64, the TLS transport); **1.33.0 or later for the SES adapter** (its HTTP
+  telemetry). One copy for the whole application: an application that uses several `*-faa`
+  libraries provides it once.
 - SMTP over TLS: Windows uses SChannel (nothing to install); on Linux, OpenSSL 3
   (`libssl3` and `ca-certificates` on Debian 12).
 - FPC programs: run with a UTF-8 code page (`SetMultiByteConversionCodePage(CP_UTF8)` in a
@@ -120,6 +125,11 @@ SES `EmailTags` (letters, digits, `_` and `-` only). For an IAM role, set
 The signature is checked against AWS's published vectors and botocore; the error mapping
 follows the SES API reference and hasn't met a real account yet (`docs/findings.md`, 9-12).
 
+The HTTP transport, the sender's own or one you pass to `Create`, is always wrapped with
+pascal-common-faa's `PcNewTracedHttpTransport`: don't pass one that already is (two spans per
+call). The `POST` span's `error.type = EPcHttpTransport` is the case the sender raises as
+`EEmailOutcomeUnknown` (no answer came).
+
 ## Errors and retries
 
 | Exception | Meaning | Retry? |
@@ -132,6 +142,31 @@ follows the SES API reference and hasn't met a real account yet (`docs/findings.
 
 Each carries `Code` (the SMTP reply), `EnhancedCode` (`5.1.1`) and `EngineText`.
 `EmailIsRetryable(E)` answers the last column. The library never retries by itself.
+
+## Traces and metrics
+
+Every sender of the library (SMTP, SES, file, mock) records each send on pascal-common-faa's
+`PascalCommon.Tracing` and `PcMetrics`, always (a span costs microseconds; nothing is exported
+until your application starts tracing):
+
+- a span **`email send`** per message, a child of the thread's current span (the root of a new
+  trace when there is none). Attributes: `pascalemail.sender` (`smtp`, `ses`...),
+  `pascalemail.recipients` (To + Cc + Bcc), `pascalemail.message_id`, `pascalemail.provider_id`,
+  `pascalemail.rejected`, `server.address` and `server.port` (SMTP); on failure `error.type`
+  (the exception's class), `pascalemail.reply.code`, `pascalemail.reply.enhanced_code`. With
+  SES, the HTTP `POST` is its child;
+- a span **`email send_many`** around each `SendMany` (`pascalemail.messages`,
+  `pascalemail.failed`), with each message's span as a child;
+- the histogram **`pascalemail.send.duration`** (seconds; `pascalemail.sender`, `error.type`)
+  and the counter **`pascalemail.recipients`** (`pascalemail.sender`, `pascalemail.outcome` =
+  `accepted` or `rejected`).
+
+**No address, subject or body goes to a span or a metric**, nor an exception's text (an SMTP
+refusal quotes the recipient): a failed span's status says only the class and the codes
+(`EEmailRejected 550 5.1.1`). The Message-ID is generated unless you set one with
+`SetMessageId`; if you put personal data there, it goes to your collector too. The decorators
+record nothing themselves: the inner sender's span shows what actually went out (with a redirect,
+the QA mailbox).
 
 ## Testing your application
 

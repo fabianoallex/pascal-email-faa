@@ -33,7 +33,15 @@
   with RequireAllRecipients.
 
   ISmtpConnector is the seam for tests: the unit suite scripts a server's
-  replies over a fake endpoint, the integration suite talks to Mailpit. }
+  replies over a fake endpoint, the integration suite talks to Mailpit.
+
+  Telemetry (PascalEmail.Telemetry; design, section 13): each message is an
+  'email send' client span with server.address and server.port (the
+  options' host and port) and a point of pascalemail.send.duration; a
+  SendMany is an 'email send_many' span around them. A Send's duration
+  includes connecting, TLS, EHLO and AUTH; in a SendMany the first message
+  carries them, and a reconnection falls on the message that needed it. No
+  reply text reaches a span (it can quote the recipient). }
 
 interface
 
@@ -147,7 +155,9 @@ uses
   PascalCommon.Utf8,
   PascalEmail.Address,
   PascalCommon.Transport.Tcp,
-  PascalCommon.Transport.Tls;
+  PascalCommon.Transport.Tls,
+  PascalCommon.Tracing,
+  PascalEmail.Telemetry;
 
 {$IF PASCALCOMMON_VERSION < 13200}
   {$MESSAGE FATAL 'pascal-email-faa needs pascal-common-faa 1.32.0 or later'}
@@ -823,15 +833,28 @@ function TSmtpSender.Send(const AMessage: IEmailMessage): TEmailSendResult;
 var
   LMime: TEmailMime;
   LSession: TSmtpSession;
+  LRec: TEmailSendTelemetry;
 begin
-  LMime := EmailBuildMime(AMessage, FIds);
-  LSession := TSmtpSession.Create(FOptions, FConnector);
+  LRec := TEmailSendTelemetry.Start(Name, skClient, AMessage, FOptions.Host,
+    FOptions.EffectivePort);
   try
-    LSession.Open;
-    Result := LSession.SendOne(LMime, AMessage);
-    LSession.Quit;
-  finally
-    LSession.Free;
+    LMime := EmailBuildMime(AMessage, FIds);
+    LRec.Identify(LMime.MessageId);
+    LSession := TSmtpSession.Create(FOptions, FConnector);
+    try
+      LSession.Open;
+      Result := LSession.SendOne(LMime, AMessage);
+      LSession.Quit;
+    finally
+      LSession.Free;
+    end;
+    LRec.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LRec.Fail(E);
+      raise;
+    end;
   end;
 end;
 
@@ -841,49 +864,75 @@ var
   LSession: TSmtpSession;
   LMime: TEmailMime;
   LUsed: Boolean;
+  LBatch: TEmailBatchTelemetry;
+  LRec: TEmailSendTelemetry;
 begin
   Result := nil;
   SetLength(Result, Length(AMessages));
   LSession := nil;
   LUsed := False;
+  LBatch := TEmailBatchTelemetry.Start(Name, Length(AMessages));
   try
-    for I := 0 to High(AMessages) do
-      try
-        LMime := EmailBuildMime(AMessages[I], FIds);
-        // The previous message's transaction is closed with RSET; a
-        // connection that fails it (or failed before) is replaced, so its
-        // failure is never charged to this message.
-        if (LSession <> nil) and LUsed and not LSession.Broken then
-          try
-            LSession.Reset;
-          except
-            on E: EEmailError do
-              ;
-          end;
-        if (LSession <> nil) and LSession.Broken then
-          FreeAndNil(LSession);
-        if LSession = nil then
-        begin
-          LSession := TSmtpSession.Create(FOptions, FConnector);
-          LUsed := False;
-          try
-            LSession.Open;
-          except
-            // Half-open (EHLO or AUTH refused): never reused.
+    try
+      for I := 0 to High(AMessages) do
+      begin
+        LRec := TEmailSendTelemetry.Start(Name, skClient, AMessages[I], FOptions.Host,
+          FOptions.EffectivePort);
+        try
+          LMime := EmailBuildMime(AMessages[I], FIds);
+          LRec.Identify(LMime.MessageId);
+          // The previous message's transaction is closed with RSET; a
+          // connection that fails it (or failed before) is replaced, so its
+          // failure is never charged to this message.
+          if (LSession <> nil) and LUsed and not LSession.Broken then
+            try
+              LSession.Reset;
+            except
+              on E: EEmailError do
+                ;
+            end;
+          if (LSession <> nil) and LSession.Broken then
             FreeAndNil(LSession);
+          if LSession = nil then
+          begin
+            LSession := TSmtpSession.Create(FOptions, FConnector);
+            LUsed := False;
+            try
+              LSession.Open;
+            except
+              // Half-open (EHLO or AUTH refused): never reused.
+              FreeAndNil(LSession);
+              raise;
+            end;
+          end;
+          LUsed := True;
+          Result[I] := EmailSentOutcome(LSession.SendOne(LMime, AMessages[I]));
+          LRec.Done(Result[I].SendResult);
+        except
+          on E: EEmailError do
+          begin
+            LRec.Fail(E);
+            Result[I] := EmailFailedOutcome(E);
+          end;
+          on E: Exception do
+          begin
+            LRec.Fail(E);
             raise;
           end;
         end;
-        LUsed := True;
-        Result[I] := EmailSentOutcome(LSession.SendOne(LMime, AMessages[I]));
-      except
-        on E: EEmailError do
-          Result[I] := EmailFailedOutcome(E);
       end;
-    if LSession <> nil then
-      LSession.Quit;
-  finally
-    LSession.Free;
+      if LSession <> nil then
+        LSession.Quit;
+    finally
+      LSession.Free;
+    end;
+    LBatch.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LBatch.Fail(E);
+      raise;
+    end;
   end;
 end;
 

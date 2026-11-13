@@ -8,6 +8,12 @@
   returns the same endpoint, so the conversation around it is tested here
   and the TLS itself in the integration suite (Mailpit).
 
+  For the telemetry tests: TCapturingSpanExporter keeps what
+  TPcTracing.FlushNow hands it (tracing started with AAutoFlush = False),
+  SpanAttribute reads one attribute, and MetricPointCount reads a series of
+  PcMetrics (a counter's value or a histogram's count), so a test compares
+  before and after.
+
   Not a test unit: the mirror generator leaves it alone, and both runners
   use this same file. }
 
@@ -18,6 +24,7 @@ interface
 uses
   SysUtils,
   PascalCommon.Transport,
+  PascalCommon.Tracing,
   PascalEmail.Mime,
   PascalEmail.Smtp;
 
@@ -100,6 +107,20 @@ type
     property Calls: Integer read FCalls;
   end;
 
+  TCapturingSpanExporter = class(TInterfacedObject, IPcSpanExporter)
+  public
+    Spans: TPcSpanDataArray;
+    function ExportSpans(const ASpans: TPcSpanDataArray; out AError: string): Boolean;
+    /// The spans exported so far named AName, in order.
+    function Named(const AName: string): TPcSpanDataArray;
+  end;
+
+/// The attribute AKey of AData as text, and whether it is there.
+function SpanAttribute(const AData: TPcSpanData; const AKey: string; out AValue: string): Boolean;
+/// The point of metric AName on PcMetrics with exactly these label values:
+/// a histogram's count, a counter's value; 0 when it doesn't exist yet.
+function MetricPointCount(const AName: string; const ALabels: array of string): Double;
+
 /// AText ACount times. StringOfChar takes one Char, and on FPC an accented
 /// letter is a two-byte string.
 function RepeatText(const AText: string; ACount: Integer): string;
@@ -118,6 +139,7 @@ implementation
 
 uses
   Classes,
+  PascalCommon.Metrics,
   PascalCommon.Crypto,
   PascalCommon.Random
   {$IFNDEF FPC}
@@ -138,6 +160,88 @@ end;
 const
   CRLF = #13#10;
   DROP_MARK = #0'drop';
+
+{ TCapturingSpanExporter }
+
+function TCapturingSpanExporter.ExportSpans(const ASpans: TPcSpanDataArray;
+  out AError: string): Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to High(ASpans) do
+  begin
+    SetLength(Spans, Length(Spans) + 1);
+    Spans[High(Spans)] := ASpans[I];
+  end;
+  AError := '';
+  Result := True;
+end;
+
+function TCapturingSpanExporter.Named(const AName: string): TPcSpanDataArray;
+var
+  I: Integer;
+begin
+  Result := nil;
+  for I := 0 to High(Spans) do
+    if Spans[I].Name = AName then
+    begin
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := Spans[I];
+    end;
+end;
+
+function SpanAttribute(const AData: TPcSpanData; const AKey: string; out AValue: string): Boolean;
+var
+  I: Integer;
+begin
+  for I := 0 to High(AData.Attributes) do
+    if AData.Attributes[I].Key = AKey then
+    begin
+      case AData.Attributes[I].ValueType of
+        satInt: AValue := IntToStr(AData.Attributes[I].IntValue);
+        satBool: AValue := BoolToStr(AData.Attributes[I].BoolValue, True);
+      else
+        AValue := AData.Attributes[I].StringValue;
+      end;
+      Exit(True);
+    end;
+  AValue := '';
+  Result := False;
+end;
+
+function MetricPointCount(const AName: string; const ALabels: array of string): Double;
+var
+  LMetrics: TPcMetricList;
+  LPoints: TPcMetricPoints;
+  I, J, M: Integer;
+  LSame: Boolean;
+begin
+  Result := 0;
+  LMetrics := PcMetrics.Metrics;
+  for M := 0 to High(LMetrics) do
+    if LMetrics[M].Name = AName then
+    begin
+      LPoints := LMetrics[M].Snapshot;
+      for I := 0 to High(LPoints) do
+      begin
+        LSame := Length(LPoints[I].LabelValues) = Length(ALabels);
+        J := 0;
+        while LSame and (J <= High(ALabels)) do
+        begin
+          LSame := LPoints[I].LabelValues[J] = ALabels[J];
+          Inc(J);
+        end;
+        if LSame then
+        begin
+          if LMetrics[M].Kind = mkHistogram then
+            Result := LPoints[I].Count
+          else
+            Result := LPoints[I].Value;
+          Exit;
+        end;
+      end;
+    end;
+end;
 
 { TCountingIdSource }
 

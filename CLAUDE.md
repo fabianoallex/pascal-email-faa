@@ -14,25 +14,33 @@ This file records only what is specific to this repository.
 
 ---
 
-## Where things stand (2026-11-12)
+## Where things stand (2026-11-13)
 
 - **0.1.0, not released** (first commit 2026-11-12). Core, mock, file
-  sender, the SMTP adapter, the decorators (redirect, allowlist; design section 11) and the SES
-  adapter (design section 12; vectors only, no AWS account: findings 9-12). Unit 137/137 and
-  integration 18/18, 0 leaks, on FPC 3.2.2 Windows
-  (SChannel and OpenSSL) and Linux (Docker, OpenSSL 3), and on Delphi 12 Win32 and Win64 (the
-  user built both suites in the IDE; the `.exe` were run from here, 2026-11-12).
-- **Decisions**: `docs/design.md` (E1-E29, accepted 2026-11-12; Q1-Q7 closed with the
-  proposals). **What servers and parsers did**: `docs/findings.md`, numbered; the design cites
-  "finding N". Read both before changing the contract.
-- **Depends on pascal-common-faa 1.32.0** (`PcBase64Encode`/`PcBase64Decode`, added for this
-  library; `$MESSAGE FATAL` in `PascalEmail.Smtp`, `MinVersion` in both `.lpk`). It is a **git
+  sender, the SMTP adapter, the decorators (redirect, allowlist; design section 11), the SES
+  adapter (design section 12; vectors only, no AWS account: findings 9-12) and telemetry
+  (design section 13, E30-E35: every sender records `email send` / `email send_many` spans and
+  `pascalemail.*` metrics; SES wraps its HTTP transport with `PcNewTracedHttpTransport`). Unit
+  151/151 and integration 20/20, 0 leaks, on FPC 3.2.2 Windows and Linux (Docker, OpenSSL 3)
+  and on Delphi 12 Win32 and Win64 (the user built both suites in the IDE; the `.exe` were run
+  from here, 2026-11-13).
+- **Decisions**: `docs/design.md` (E1-E35, accepted 2026-11-12 and 2026-11-13; Q1-Q7 closed
+  with the proposals). **What servers and parsers did**: `docs/findings.md`, numbered; the
+  design cites "finding N". Read both before changing the contract.
+- **Telemetry never carries an address, subject, body or exception text** (E32): a failed
+  span's status is `<class> <code> <enhanced code>`. Keep it so in any new sender; call
+  `TEmailSendTelemetry` from it (Start, Identify, Done or Fail).
+- **Depends on pascal-common-faa 1.32.0 for the core and SMTP, 1.33.0 for SES**
+  (`PcBase64Encode`/`PcBase64Decode`, added for this library; `PascalCommon.Http.Telemetry`;
+  `$MESSAGE FATAL` in `PascalEmail.Smtp` and `PascalEmail.Ses`, `MinVersion` in the `.lpk`
+  files). The submodule is at `v1.33.0`. It is a **git
   submodule in `external/pascal-common-faa`, for tests, CI and samples only**: the application
   provides the single copy. The packages require `pascal_common_faa` by name, with no
   `DefaultFilename`; the test `.lpi` files point at the submodule's `.lpk` with `Prefer="True"`;
   the Delphi projects add `external/pascal-common-faa/src` to the search path. Checkout without
   `--recursive` (pascal-common-faa's own submodules are for its tests).
-- **Next**: the outbox bridge (design E11, pascal-db-faa's `TOutboxLocalSink`, its own package);
+- **Next**: the outbox bridge (design E11, pascal-db-faa's `TOutboxLocalSink`, its own package;
+  confirm there that `email send` continues the outbox span's trace, design section 13);
   confirm finding 12 on a real SES account when one exists; an entry in the skill's
   `faa-libraries.md` once a version is published.
 

@@ -1,4 +1,4 @@
-unit PascalEmail.Ses;
+﻿unit PascalEmail.Ses;
 
 {$I pascalemail.inc}
 
@@ -38,7 +38,25 @@ unit PascalEmail.Ses;
   from the SES v2 API reference (docs/findings.md, finding 12).
 
   A sender is thread-safe (one HTTP transport, kept for the process, with
-  its keep-alive pool). }
+  its keep-alive pool).
+
+  Telemetry (design, section 13): the transport, the one created here and
+  the one given to Create alike, is wrapped with pascal-common-faa's
+  PcNewTracedHttpTransport (zeroed options). Under the thread's current
+  span, each request is an OpenTelemetry HTTP client span ('POST',
+  server.address, url.full = the base URL and the fixed path, the status,
+  error.type) with its traceparent sent; with no current span, only the
+  histogram http.client.request.duration is recorded. The body (the MIME,
+  with its recipients and content) goes to neither. The traceparent is
+  added after the request is signed, outside SignedHeaders: SigV4 checks
+  only the signed headers (finding 13, reasoned, not measured against AWS).
+  An error.type of EPcHttpTransport on that span is the case this sender
+  raises as EEmailOutcomeUnknown. Don't pass a transport that is already
+  traced: each send would make two spans and two points.
+
+  Around it, each message is an 'email send' span of PascalEmail.Telemetry
+  (internal: the POST under it is the client span) and a point of
+  pascalemail.send.duration, with provider_id = SES's MessageId. }
 
 interface
 
@@ -51,6 +69,7 @@ uses
   PascalEmail.Message,
   PascalEmail.Mime,
   PascalEmail.Interfaces,
+  PascalEmail.Telemetry,
   PascalEmail.AwsSigV4;
 
 const
@@ -94,11 +113,14 @@ type
     function CurrentCredentials: TAwsCredentials;
     function RequestBody(const AMessage: IEmailMessage; const AMime: TEmailMime): string;
     procedure RaiseForStatus(const AResponse: TPcHttpResponse);
+    function SendRequest(const AMessage: IEmailMessage;
+      var ARec: TEmailSendTelemetry): TEmailSendResult;
   public
     /// EEmailArgumentError for options that can't work (no region, a region
     /// that isn't a name, no credentials, a bad configuration set name).
     /// ATransport nil = a new pascal-common-faa HTTP transport; AIds nil =
-    /// random ids.
+    /// random ids. Either way the transport is wrapped with
+    /// PcNewTracedHttpTransport: never pass one that already is.
     constructor Create(const AOptions: TSesOptions; const ATransport: IPcHttpTransport = nil;
       const AIds: IEmailIdSource = nil);
     function Name: string; override;
@@ -114,10 +136,12 @@ implementation
 
 uses
   PascalCommon.Version,
-  PascalCommon.Crypto;
+  PascalCommon.Crypto,
+  PascalCommon.Http.Telemetry,
+  PascalCommon.Tracing;
 
-{$IF PASCALCOMMON_VERSION < 13200}
-  {$MESSAGE FATAL 'pascal-email-faa needs pascal-common-faa 1.32.0 or later'}
+{$IF PASCALCOMMON_VERSION < 13300}
+  {$MESSAGE FATAL 'pascal-email-faa''s SES adapter needs pascal-common-faa 1.33.0 or later'}
 {$IFEND}
 
 { Helpers }
@@ -299,6 +323,7 @@ begin
       [FOptions.ConfigurationSetName]);
   if FHttp = nil then
     FHttp := PcNewHttpTransport(FOptions.Http);
+  FHttp := PcNewTracedHttpTransport(FHttp);
 end;
 
 function TSesSender.Name: string;
@@ -359,11 +384,30 @@ end;
 
 function TSesSender.Send(const AMessage: IEmailMessage): TEmailSendResult;
 var
+  LRec: TEmailSendTelemetry;
+begin
+  LRec := TEmailSendTelemetry.Start(Name, skInternal, AMessage);
+  try
+    Result := SendRequest(AMessage, LRec);
+    LRec.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LRec.Fail(E);
+      raise;
+    end;
+  end;
+end;
+
+function TSesSender.SendRequest(const AMessage: IEmailMessage;
+  var ARec: TEmailSendTelemetry): TEmailSendResult;
+var
   LMime: TEmailMime;
   LRequest: TPcHttpRequest;
   LResponse: TPcHttpResponse;
 begin
   LMime := EmailBuildMime(AMessage, FIds);
+  ARec.Identify(LMime.MessageId);
   LRequest := TPcHttpRequest.Create('POST', FOptions.BaseUrl + SES_SEND_PATH);
   LRequest.AddHeader('Content-Type', 'application/json');
   LRequest.Body := RequestBody(AMessage, LMime);

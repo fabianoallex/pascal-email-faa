@@ -13,6 +13,10 @@
   (EEmailTransient), a bounce (EEmailRejected) or a lost answer
   (EEmailOutcomeUnknown).
 
+  Like the engines, it records each send (PascalEmail.Telemetry: an 'email
+  send' client span and the metrics, sender 'mock'), so an application can
+  test its own tracing without a server.
+
   Thread-safe: a sender is shared by the threads of an application. }
 
 interface
@@ -22,8 +26,10 @@ uses
   SyncObjs,
   PascalEmail.Errors,
   PascalEmail.Message,
+  PascalCommon.Tracing,
   PascalEmail.Mime,
-  PascalEmail.Interfaces;
+  PascalEmail.Interfaces,
+  PascalEmail.Telemetry;
 
 type
   EEmailErrorClass = class of EEmailError;
@@ -44,6 +50,7 @@ type
     FFailCode: Integer;
     FFailCount: Integer;
     FAttempts: Integer;
+    function DoSend(const AMessage: IEmailMessage; var ARec: TEmailSendTelemetry): TEmailSendResult;
   public
     /// AIds nil = random boundaries and Message-IDs.
     constructor Create(const AIds: IEmailIdSource = nil);
@@ -90,6 +97,24 @@ end;
 
 function TMockEmailSender.Send(const AMessage: IEmailMessage): TEmailSendResult;
 var
+  LRec: TEmailSendTelemetry;
+begin
+  LRec := TEmailSendTelemetry.Start(Name, skClient, AMessage);
+  try
+    Result := DoSend(AMessage, LRec);
+    LRec.Done(Result);
+  except
+    on E: Exception do
+    begin
+      LRec.Fail(E);
+      raise;
+    end;
+  end;
+end;
+
+function TMockEmailSender.DoSend(const AMessage: IEmailMessage;
+  var ARec: TEmailSendTelemetry): TEmailSendResult;
+var
   LSent: TMockSentEmail;
   LFailClass: EEmailErrorClass;
   LFailMessage: string;
@@ -113,6 +138,7 @@ begin
   end;
   LSent.Message := AMessage;
   LSent.Mime := EmailBuildMime(AMessage, FIds);
+  ARec.Identify(LSent.Mime.MessageId);
   if LFailClass <> nil then
     raise LFailClass.CreateReply(LFailMessage, LFailCode, '', LFailMessage);
   FLock.Acquire;

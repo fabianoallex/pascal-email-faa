@@ -1,4 +1,4 @@
-unit PascalEmail.IntegrationEnv;
+﻿unit PascalEmail.IntegrationEnv;
 
 { Where the integration suite finds the SMTP servers (Mailpit, three ways:
   tools/mailpit.sh) and how it reads back what they received (Mailpit's

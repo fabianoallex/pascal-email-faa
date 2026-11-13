@@ -25,6 +25,7 @@ uses
   PascalEmail.Mock in '..\..\src\PascalEmail.Mock.pas',
   PascalEmail.FileSender in '..\..\src\PascalEmail.FileSender.pas',
   PascalEmail.Decorators in '..\..\src\PascalEmail.Decorators.pas',
+  PascalEmail.Telemetry in '..\..\src\PascalEmail.Telemetry.pas',
   PascalEmail.Smtp in '..\..\adapters\smtp\PascalEmail.Smtp.pas',
   PascalEmail.DUnitXCompat in '..\Unit\PascalEmail.DUnitXCompat.pas',
   PascalEmail.TestSupport in '..\Unit\PascalEmail.TestSupport.pas',

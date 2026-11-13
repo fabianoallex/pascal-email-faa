@@ -26,7 +26,8 @@ uses
   PascalEmail.MockTests,
   PascalEmail.SmtpTests,
   PascalEmail.DecoratorTests,
-  PascalEmail.SesTests;
+  PascalEmail.SesTests,
+  PascalEmail.TelemetryTests;
 
 var
   ConsoleApp: TTestRunner;
